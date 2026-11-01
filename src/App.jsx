@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SportSelector from "./components/SportSelector.jsx";
 import EventCard from "./components/EventCard.jsx";
 import PicksPanel from "./components/PicksPanel.jsx";
+import PerformancePanel from "./components/PerformancePanel.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 import { useLocalStorage } from "./hooks/useLocalStorage.js";
-import { SPORTS, fetchOdds } from "./api/odds.js";
+import { SPORTS, fetchOdds, buildLineMatrix, arbitrageMargin } from "./api/odds.js";
 import { buildPicks } from "./api/experts.js";
 
 const DEMO_EVENTS = [
@@ -93,6 +94,55 @@ export default function App() {
   const activeMeta = keys.find((k) => k.key === activeKey);
   const remaining = activeMeta?.remaining ?? null;
 
+  // ---- Registro personal de apuestas (compartido entre pestañas) ----
+  const [bets, setBets] = useLocalStorage("bets", []);
+
+  // ---- Alertas de arbitraje ----
+  const [arbPct, setArbPct] = useLocalStorage("arbPct", 0.5); // umbral en %
+  const [arbNotified, setArbNotified] = useLocalStorage("arbNotified", []);
+  const [notifGranted, setNotifGranted] = useState(
+    typeof Notification !== "undefined" && Notification.permission === "granted"
+  );
+
+  const requestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const perm = await Notification.requestPermission();
+    setNotifGranted(perm === "granted");
+  };
+
+  // Oportunidades de arbitraje >= umbral en los eventos del deporte activo
+  const arbOpportunities = [];
+  if (events) {
+    for (const ev of events) {
+      if (ev.sport_key !== sport) continue;
+      const m = arbitrageMargin(buildLineMatrix(ev));
+      if (m && m * 100 >= arbPct) arbOpportunities.push({ event: ev, margin: m });
+    }
+    arbOpportunities.sort((a, b) => b.margin - a.margin);
+  }
+
+  // Notificar (una sola vez por evento) nuevas oportunidades
+  useEffect(() => {
+    if (arbOpportunities.length === 0) return;
+    const fresh = arbOpportunities.filter((o) => !arbNotified.includes(o.event.id));
+    if (fresh.length === 0) return;
+    setArbNotified((prev) => [...prev, ...fresh.map((o) => o.event.id)]);
+    if (notifGranted) {
+      const best = fresh[0];
+      const pct = (best.margin * 100).toFixed(1);
+      const ev = best.event;
+      try {
+        new Notification(`⚡ Arbitraje ${pct}%`, {
+          body: `Posible arbitraje del ${pct}% en ${ev.away_team} @ ${ev.home_team}. Abre Smart Picks.`,
+        });
+      } catch {
+        /* algunos navegadores exigen el service worker para notificar */
+      }
+    }
+    // recalcula cuando cambian los eventos o el umbral
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arbOpportunities.map((o) => o.event.id).join(",")]);
+
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -159,6 +209,9 @@ export default function App() {
           <button className={tab === "picks" ? "tab active" : "tab"} onClick={() => setTab("picks")}>
             Picks expertos
           </button>
+          <button className={tab === "rendimiento" ? "tab active" : "tab"} onClick={() => setTab("rendimiento")}>
+            Rendimiento{bets.some((b) => b.status === "open") ? ` (${bets.filter((b) => b.status === "open").length})` : ""}
+          </button>
         </nav>
         <div className="header-actions">
           {remaining != null && <span className="credits" title="Créditos restantes de tu API">🎟️ {remaining}</span>}
@@ -176,6 +229,14 @@ export default function App() {
           <button className="btn small" onClick={() => setShowSettings(true)}>Abrir ajustes</button>
         </div>
       )}
+      {arbOpportunities.length > 0 && (
+        <div className="notice arb">
+          ⚡ {arbOpportunities.length} oportunidad(es) de arbitraje ≥ {arbPct}% —{" "}
+          {arbOpportunities[0].event.away_team} @ {arbOpportunities[0].event.home_team}{" "}
+          ({(arbOpportunities[0].margin * 100).toFixed(1)}%)
+        </div>
+      )}
+
       {!activeKey && (
         <div className="notice">
           Modo demostración — añade tu API key gratuita en ⚙️ para ver cuotas reales de las casas.
@@ -197,13 +258,39 @@ export default function App() {
             ))}
           </section>
         )}
-        {tab === "picks" && <PicksPanel picks={picks} sportKey={sport} />}
+        {tab === "picks" && (
+          <PicksPanel
+            picks={picks}
+            sportKey={sport}
+            events={events ?? []}
+            bets={bets}
+            setBets={setBets}
+          />
+        )}
+        {tab === "rendimiento" && (
+          <PerformancePanel
+            bets={bets}
+            setBets={setBets}
+            activeKey={activeKey}
+            onCredits={(rem) =>
+              setKeys((ks) =>
+                ks.map((k) =>
+                  k.key === activeKey ? { ...k, remaining: Number(rem) } : k
+                )
+              )
+            }
+          />
+        )}
       </main>
 
       {showSettings && (
         <SettingsModal
           keys={keys}
           active={activeKey}
+          arbPct={arbPct}
+          onArbPct={setArbPct}
+          notifGranted={notifGranted}
+          onRequestNotif={requestNotifPermission}
           onClose={() => setShowSettings(false)}
           onAdd={(newKey) => {
             const k = newKey;

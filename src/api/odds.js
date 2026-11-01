@@ -76,6 +76,22 @@ export function bestPrice(entries) {
   return entries.reduce((best, e) => (e.price > best.price ? e : best), entries[0]);
 }
 
+/**
+ * Resultados de la API (marcadores de terminados, ~últimas 2 semanas).
+ * Coste: 1 crédito por deporte.
+ */
+export async function fetchScores(apiKey, sportKey) {
+  const url = `${BASE}/sports/${sportKey}/scores/?apiKey=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text();
+    const err = new Error(`Error ${res.status}: ${body || res.statusText}`);
+    err.status = res.status;
+    throw err;
+  }
+  return { events: await res.json(), remaining: res.headers.get("x-requests-remaining") };
+}
+
 /** Cuántas casas distintas ofrecen cada selección (liquidez de mercado). */
 export function bookCount(entries) {
   return new Set((entries ?? []).map((e) => e.book)).size;
@@ -87,4 +103,32 @@ export function arbitrageMargin(matrix) {
   if (selects.some((s) => !s) || selects.length < 2) return null;
   const sum = selects.reduce((acc, s) => acc + 1 / s.price, 0);
   return sum < 1 ? 1 - sum : 0;
+}
+
+/**
+ * Al seguir un pick, localiza el evento correspondiente y la mejor cuota
+ * disponible para su selección (h2h). Devuelve { event, entries, best } o null.
+ * pick.event viene como "<visitante> @ <local>".
+ */
+export function findBestOddsForPick(eventName, selection, events, nameScoreFn) {
+  const [awayPart, homePart] = (eventName ?? "").split(" @ ");
+  if (!awayPart || !homePart) return null;
+  let match = null;
+  for (const ev of events ?? []) {
+    const s = nameScoreFn(awayPart, ev.away_team) + nameScoreFn(homePart, ev.home_team);
+    if (!match || s > match.score) match = { ev, score: s };
+  }
+  if (!match || match.score < 1.0) return null;
+  const ev = match.ev;
+  let entries = [];
+  for (const bm of ev.bookmakers ?? []) {
+    for (const mkt of bm.markets ?? []) {
+      if (mkt.key !== "h2h") continue;
+      for (const o of mkt.outcomes ?? []) {
+        if (nameScoreFn(o.name, selection) >= 0.75) entries.push({ book: bm.title, price: o.price });
+      }
+    }
+  }
+  if (entries.length === 0) return { event: ev, entries, best: null };
+  return { event: ev, entries, best: bestPrice(entries) };
 }

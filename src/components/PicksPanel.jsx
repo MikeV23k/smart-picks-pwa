@@ -1,67 +1,70 @@
-import { useLocalStorage } from "../hooks/useLocalStorage.js";
+import { findBestOddsForPick } from "../api/odds.js";
+import { nameScore } from "../api/experts.js";
 
 /**
- * Panel de picks de expertos + registro personal de decisiones.
- * `oddsByEvent` permite cruzar el pick con la mejor cuota disponible.
+ * Panel de picks de expertos. "Seguir pick" registra una apuesta en el
+ * historial capturando la mejor cuota disponible en ese instante.
  */
-export default function PicksPanel({ picks, sportKey, oddsCache }) {
-  const [followed, setFollowed] = useLocalStorage("followed", {});
+export default function PicksPanel({ picks, sportKey, events, bets, setBets }) {
+  const followedIds = new Set(bets.map((b) => b.pickId));
   const visible = picks.filter((p) => p.sport === sportKey);
 
-  const toggle = (id) =>
-    setFollowed((f) => {
-      const next = { ...f };
-      if (next[id]) delete next[id];
-      else next[id] = { takenAt: new Date().toISOString() };
-      return next;
-    });
+  const toggle = (pick) => {
+    const existing = bets.find((b) => b.pickId === pick.id);
+    if (existing) {
+      setBets((bs) => bs.filter((b) => b.id !== existing.id));
+      return;
+    }
+    const match = findBestOddsForPick(pick.event, pick.selection, events, nameScore);
+    setBets((bs) => [
+      ...bs,
+      {
+        id: `bet-${pick.id}`,
+        pickId: pick.id,
+        expert: pick.expert,
+        source: pick.source,
+        sport: pick.sport,
+        event: pick.event,
+        selection: pick.selection,
+        stake: pick.stake ?? 1,
+        oddsUsed: match?.best?.price ?? null,
+        status: "open",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  };
 
   return (
     <section>
       <h2 className="section-title">Picks de expertos</h2>
-      {visible.length === 0 && (
-        <p className="muted">No hay picks para este deporte todavía.</p>
-      )}
+      {visible.length === 0 && <p className="muted">No hay picks para este deporte todavía.</p>}
       <div className="picks-grid">
-        {visible.map((p) => (
-          <article key={p.id} className="pick-card">
-            <header>
-              <strong>{p.expert}</strong>
-              <span className="muted"> · {p.source}</span>
-            </header>
-            <div className="pick-event">{p.event}</div>
-            <div className="pick-selection">{p.selection}</div>
-            <div className="pick-stats">
-              <span title="Confianza del experto">🎯 {p.confidence}%</span>
-              {p.stake != null && <span title="Unidades sugeridas">💰 {p.stake}u</span>}
-            </div>
-            <p className="pick-reasoning">{p.reasoning}</p>
-            <button className="btn" onClick={() => toggle(p.id)}>
-              {followed[p.id] ? "✓ Siguiendo (quitar)" : "Seguir pick"}
-            </button>
-            {followed[p.id] && (
-              <p className="muted small">Tomado el {new Date(followed[p.id].takenAt).toLocaleString("es-ES")}</p>
-            )}
-          </article>
-        ))}
+        {visible.map((p) => {
+          const isFollowed = followedIds.has(p.id);
+          return (
+            <article key={p.id} className="pick-card">
+              <header>
+                <strong>{p.expert}</strong>
+                <span className="muted"> · {p.source}</span>
+              </header>
+              <div className="pick-event">{p.event}</div>
+              <div className="pick-selection">{p.selection}</div>
+              <div className="pick-stats">
+                <span title="Confianza del experto">🎯 {p.confidence}%</span>
+                {p.stake != null && <span title="Unidades sugeridas">💰 {p.stake}u</span>}
+              </div>
+              <p className="pick-reasoning">{p.reasoning}</p>
+              <button className="btn" onClick={() => toggle(p)}>
+                {isFollowed ? "✓ Siguiendo (quitar)" : "Seguir pick"}
+              </button>
+            </article>
+          );
+        })}
       </div>
-
-      {Object.keys(followed).length > 0 && (
-        <>
-          <h2 className="section-title">Mi registro ({Object.keys(followed).length})</h2>
-          <ul className="registry">
-            {Object.entries(followed).map(([id, meta]) => {
-              const p = picks.find((x) => x.id === id);
-              if (!p) return null;
-              return (
-                <li key={id}>
-                  <strong>{p.expert}</strong> — {p.event}: {p.selection}
-                  <span className="muted small"> · {new Date(meta.takenAt).toLocaleDateString("es-ES")}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </>
+      {bets.filter((b) => b.sport === sportKey).length > 0 && (
+        <p className="muted small">
+          Consulta el estado y ROI de tus picks seguidos en la pestaña <strong>Rendimiento</strong>.
+        </p>
       )}
     </section>
   );

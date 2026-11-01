@@ -39,7 +39,7 @@ function norm(s) {
 
 /** Similitud de nombres: coeficiente de Dice sobre bigramas de caracteres.
  *  Tolera variantes como "LA Clippers" vs "Los Angeles Clippers". */
-function nameScore(a, b) {
+export function nameScore(a, b) {
   const na = norm(a).replace(/ /g, "");
   const nb = norm(b).replace(/ /g, "");
   if (na.length < 3 || nb.length < 3) return 0;

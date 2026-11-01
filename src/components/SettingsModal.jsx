@@ -8,8 +8,20 @@ function mask(key) {
  * Gestor de API keys: guarda varias, muestra créditos restantes por key,
  * permite activar una distinta o borrarlas (p. ej. cuando se agotan los créditos).
  */
-export default function SettingsModal({ keys, active, onAdd, onActivate, onDelete, onClose }) {
+export default function SettingsModal({
+  keys,
+  active,
+  arbPct,
+  onArbPct,
+  notifGranted,
+  onRequestNotif,
+  onAdd,
+  onActivate,
+  onDelete,
+  onClose,
+}) {
   const [draft, setDraft] = useState("");
+  const [pctDraft, setPctDraft] = useState(String(arbPct ?? 0.5));
 
   const submit = () => {
     if (draft) {
@@ -62,6 +74,39 @@ export default function SettingsModal({ keys, active, onAdd, onActivate, onDelet
             );
           })}
         </ul>
+
+        <label className="field">
+          <span>Umbral de alerta de arbitraje (%)</span>
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            value={pctDraft}
+            onChange={(e) => setPctDraft(e.target.value)}
+          />
+        </label>
+        <button
+          className="btn small"
+          onClick={() => {
+            const v = parseFloat(pctDraft);
+            if (!Number.isNaN(v)) onArbPct(Math.max(0, v));
+          }}
+        >
+          Guardar umbral ({pctDraft}%)
+        </button>
+        <p className="muted small">
+          Aviso: al abrir o recargar la app, si algún evento alcanza el umbral verás un banner
+          {notifGranted ? " y recibirás una notificación." : "."}
+        </p>
+        <div className="modal-actions">
+          {!notifGranted ? (
+            <button className="btn small ghost" onClick={onRequestNotif}>
+              🔔 Permitir notificaciones
+            </button>
+          ) : (
+            <span className="key-active-badge">🔔 Notificaciones activadas</span>
+          )}
+        </div>
 
         <label className="field">
           <span>Añadir nueva key</span>
