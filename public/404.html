@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirigiendo a Smart Picks…</title>
+    <script>
+      // GitHub Pages solo sirve /smart-picks-pwa/ en repos de proyecto.
+      // Cualquier ruta rota (p. ej. la raíz "/") se redirige a la app.
+      (function () {
+        var L = window.location;
+        var target = "/smart-picks-pwa/";
+        if (L.pathname.indexOf(target) === 0) return; // ya dentro
+        setTimeout(function () {
+          L.replace(L.origin + target);
+        }, 50);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirigiendo a <a href="/smart-picks-pwa/">Smart Picks</a>…</p>
+  </body>
+</html>

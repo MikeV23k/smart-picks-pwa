@@ -19,7 +19,11 @@ export default defineConfig({
         theme_color: "#0b1220",
         background_color: "#0b1220",
         display: "standalone",
-        start_url: "/",
+        // Rutas relativas: funcionan igual en "/" (local) que en
+        // "/smart-picks-pwa/" (GitHub Pages de proyecto).
+        start_url: "./",
+        scope: "./",
+        id: "./",
         icons: [
           { src: "favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
           { src: "icon-192.png", sizes: "192x192", type: "image/png" },
