@@ -407,14 +407,10 @@ main { padding-top: 4px; }
 
 .sport-selector {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
-  padding: 6px 2px 16px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
+  padding: 6px 0 16px;
 }
-
-.sport-selector::-webkit-scrollbar { display: none; }
 
 .sport-chip {
   flex: 0 0 auto;
@@ -1133,6 +1129,9 @@ h4 span {
   .brand-text small { display: none; }
   .credits { padding: 6px 9px; font-size: 0.72rem; }
   .tab { padding: 8px 12px; font-size: 0.8rem; }
+
+  .sport-selector { gap: 6px; padding-bottom: 12px; }
+  .sport-chip { padding: 7px 11px; font-size: 0.76rem; }
 
   .hero { padding: 18px; border-radius: 20px; }
   .hero h2 { font-size: 1.5rem; }
