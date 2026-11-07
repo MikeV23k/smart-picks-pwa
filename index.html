@@ -3,9 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1220" />
+    <meta name="theme-color" content="#070b12" />
+    <meta
+      name="description"
+      content="Compara cuotas de las principales casas, sigue picks de expertos y detecta arbitraje en fútbol, NBA, NFL, tenis, UFC y más."
+    />
+    <script>
+      // Aplica el tema guardado antes del primer pintado (evita el flash).
+      try {
+        if (JSON.parse(localStorage.getItem("sp:theme")) === "light") {
+          document.documentElement.dataset.theme = "light";
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute("content", "#f4f6fa");
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" href="/favicon.svg" />
-    <title>Smart Picks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <title>Smart Picks — Cuotas, picks y arbitraje</title>
   </head>
   <body>
     <div id="root"></div>

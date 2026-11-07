@@ -22,6 +22,13 @@ const ESPN_SLUG = {
   soccer_epl: "soccer/eng.1",
   soccer_spain_la_liga: "soccer/esp.1",
   soccer_uefa_champs_league: "soccer/uefa.champions",
+  soccer_italy_serie_a: "soccer/ita.1",
+  soccer_germany_bundesliga: "soccer/ger.1",
+  soccer_france_ligue_one: "soccer/fra.1",
+  soccer_usa_mls: "soccer/usa.1",
+  tennis_atp: "tennis/atp",
+  tennis_wta: "tennis/wta",
+  mma_mixed_martial_arts: "mma/ufc",
 };
 
 /** Cache en memoria por sesión para no repetir llamadas a ESPN. */
@@ -67,16 +74,21 @@ export async function fetchEspnEvents(sportKey) {
   const slug = ESPN_SLUG[sportKey];
   if (!slug) return [];
   const data = await fetchJson(`https://site.api.espn.com/apis/site/v2/sports/${slug}/scoreboard`);
-  return (data.events ?? []).map((e) => {
-    const home = (e.competitions?.[0]?.competitors ?? []).find((c) => c.homeAway === "home");
-    const away = (e.competitions?.[0]?.competitors ?? []).find((c) => c.homeAway === "away");
-    return {
-      id: e.id,
-      home: home?.team?.displayName ?? "",
-      away: away?.team?.displayName ?? "",
-      date: e.date,
-    };
-  });
+  const nameOf = (c) => c?.team?.displayName ?? c?.athlete?.displayName ?? "";
+  return (data.events ?? [])
+    .map((e) => {
+      const comps = e.competitions?.[0]?.competitors ?? [];
+      // Deportes de equipo usan homeAway; tenis/MMA solo traen competidores.
+      const home = comps.find((c) => c.homeAway === "home") ?? comps[1];
+      const away = comps.find((c) => c.homeAway === "away") ?? comps[0];
+      return {
+        id: e.id,
+        home: nameOf(home),
+        away: nameOf(away),
+        date: e.date,
+      };
+    })
+    .filter((e) => e.home && e.away);
 }
 
 /** Probabilidad de victoria pre-partido (FPI) de un evento ESPN. */
@@ -125,6 +137,7 @@ export function marketConsensusPick(oddsEvent, sportKey) {
     expert: "Consenso del mercado",
     source: "The Odds API",
     sport: sportKey,
+    sourceSport: oddsEvent.source_sport_key ?? sportKey,
     event: `${oddsEvent.away_team} @ ${oddsEvent.home_team}`,
     selection: top.name,
     confidence: Math.round(top.pct * 100),
@@ -167,6 +180,7 @@ export async function buildPicks(oddsEvents, sportKey) {
           expert: "ESPN Analytics (FPI)",
           source: "ESPN API",
           sport: sportKey,
+          sourceSport: ev.source_sport_key ?? sportKey,
           event: `${ev.away_team} @ ${ev.home_team}`,
           selection: homeFav ? ev.home_team : ev.away_team,
           confidence: Math.round((homeFav ? fpi.homePct : fpi.awayPct) * 100),

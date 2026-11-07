@@ -2,6 +2,11 @@ import { useState } from "react";
 import { fetchScores } from "../api/odds.js";
 import { nameScore } from "../api/experts.js";
 
+/** Un pick virtual (tenis/cricket) guarda el torneo real para pedir marcadores. */
+function actualSport(bet) {
+  return bet.sourceSport ?? bet.sport;
+}
+
 /**
  * Panel de rendimiento personal: resumen de ROI, resolución de apuestas
  * con marcadores reales (The Odds API /scores) y desglose por experto.
@@ -32,7 +37,7 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
     setResolving(true);
     setMessage(null);
     const updates = new Map();
-    const sports = [...new Set(open.map((b) => b.sport))];
+    const sports = [...new Set(open.map(actualSport))];
     let budgetFellShort = false;
     try {
       for (const sport of sports) {
@@ -40,7 +45,7 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
           const { events, remaining } = await fetchScores(activeKey, sport);
           if (remaining != null && onCredits) onCredits(remaining);
           if (remaining === "0") budgetFellShort = true;
-          for (const bet of open.filter((b) => b.sport === sport)) {
+          for (const bet of open.filter((b) => actualSport(b) === sport)) {
             if (updates.has(bet.id)) continue;
             const [awayPart, homePart] = bet.event.split(" @ ");
             const done = (events ?? []).find(
@@ -108,41 +113,85 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
 
   return (
     <section>
-      <h2 className="section-title">Mi rendimiento</h2>
+      <div className="section-head">
+        <div>
+          <h2>Mi rendimiento</h2>
+          <p>ROI, aciertos y resultados resueltos con marcadores reales.</p>
+        </div>
+      </div>
 
       <div className="stat-row">
         <div className="stat-tile">
-          <span className="stat-value">{roi >= 0 ? "+" : ""}{roi.toFixed(1)}%</span>
+          <span className="stat-icon" aria-hidden="true">📈</span>
+          <span className={`stat-value ${roi >= 0 ? "good" : "bad"}`}>
+            {roi >= 0 ? "+" : ""}
+            {roi.toFixed(1)}%
+          </span>
           <span className="stat-label">ROI</span>
+          <span className="stat-sub">sobre lo apostado</span>
         </div>
         <div className="stat-tile">
-          <span className={`stat-value ${net >= 0 ? "good" : "bad"}`}>{net >= 0 ? "+" : ""}{net.toFixed(2)}u</span>
+          <span className="stat-icon" aria-hidden="true">💵</span>
+          <span className={`stat-value ${net >= 0 ? "good" : "bad"}`}>
+            {net >= 0 ? "+" : ""}
+            {net.toFixed(2)}u
+          </span>
           <span className="stat-label">Unidades netas</span>
+          <span className="stat-sub">beneficio o pérdida</span>
         </div>
         <div className="stat-tile">
-          <span className="stat-value">{winrate == null ? "–" : `${winrate.toFixed(0)}%`}</span>
-          <span className="stat-label">Aciertos ({wins}W-{losses}L)</span>
+          <span className="stat-icon" aria-hidden="true">🎯</span>
+          <span className="stat-value">
+            {winrate == null ? "–" : `${winrate.toFixed(0)}%`}
+          </span>
+          <span className="stat-label">Aciertos</span>
+          <span className="stat-sub">{wins}W · {losses}L</span>
         </div>
         <div className="stat-tile">
+          <span className="stat-icon" aria-hidden="true">🏦</span>
           <span className="stat-value">{stakedResolved.toFixed(1)}u</span>
           <span className="stat-label">Total apostado</span>
+          <span className="stat-sub">en apuestas resueltas</span>
         </div>
       </div>
 
       {open.length > 0 && (
         <>
-          <h2 className="section-title">Pendientes ({open.length})</h2>
+          <div className="section-head">
+            <div>
+              <h2>Pendientes</h2>
+              <p>Resuelve con los marcadores oficiales de la API.</p>
+            </div>
+            <span className="count-pill">{open.length}</span>
+          </div>
           <button className="btn" onClick={resolvePending} disabled={resolving}>
-            {resolving ? "Consultando marcadores…" : `🎯 Resolver con resultados (1 crédito/deporte)`}
+            {resolving ? "Consultando marcadores…" : "🎯 Resolver con resultados"}
           </button>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            Coste: 1 crédito por deporte.
+          </p>
           <ul className="bets-list">
             {open.map((b) => (
               <li key={b.id} className="bet-item">
-                <div>
-                  <strong>{b.expert}</strong> · <span className="muted">{b.selection}</span>
-                  <div className="muted small">{b.event} · {fmtDate(b.createdAt)} · {b.stake}u @ cuota {b.oddsUsed ?? "–"}</div>
+                <div className="bet-main">
+                  <div className="bet-title">
+                    <strong>{b.expert}</strong>
+                    <span className="muted">·</span>
+                    <span>{b.selection}</span>
+                  </div>
+                  <div className="bet-meta">
+                    {b.event} · {fmtDate(b.createdAt)} · {b.stake}u @ cuota{" "}
+                    {b.oddsUsed ?? "–"}
+                  </div>
                 </div>
-                <button className="btn small ghost" title="Eliminar" onClick={() => removeBet(b.id)}>🗑️</button>
+                <button
+                  className="icon-btn danger"
+                  title="Eliminar"
+                  aria-label="Eliminar apuesta"
+                  onClick={() => removeBet(b.id)}
+                >
+                  🗑️
+                </button>
               </li>
             ))}
           </ul>
@@ -153,14 +202,30 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
 
       {resolved.length > 0 && (
         <>
-          <h2 className="section-title">Historial resuelto ({resolved.length})</h2>
+          <div className="section-head">
+            <div>
+              <h2>Historial resuelto</h2>
+              <p>Tus resultados, con la cuota capturada al seguir el pick.</p>
+            </div>
+            <span className="count-pill">{resolved.length}</span>
+          </div>
           <ul className="bets-list">
             {resolved.map((b) => (
               <li key={b.id} className="bet-item">
-                <div>
-                  <span className={`chip ${b.result}`}>{b.result === "win" ? "Ganada" : b.result === "loss" ? "Perdida" : "Nula"}</span>
-                  <strong> {b.expert}</strong> · <span className="muted">{b.selection}</span>
-                  <div className="muted small">{b.event} · {fmtDate(b.resolvedAt)} · {b.stake}u @ {b.oddsUsed ?? "–"} → {b.units >= 0 ? "+" : ""}{b.units.toFixed(2)}u</div>
+                <div className="bet-main">
+                  <div className="bet-title">
+                    <span className={`chip ${b.result}`}>
+                      {b.result === "win" ? "Ganada" : b.result === "loss" ? "Perdida" : "Nula"}
+                    </span>
+                    <strong>{b.expert}</strong>
+                    <span className="muted">·</span>
+                    <span>{b.selection}</span>
+                  </div>
+                  <div className="bet-meta">
+                    {b.event} · {fmtDate(b.resolvedAt)} · {b.stake}u @{" "}
+                    {b.oddsUsed ?? "–"} → {b.units >= 0 ? "+" : ""}
+                    {b.units.toFixed(2)}u
+                  </div>
                 </div>
               </li>
             ))}
@@ -170,7 +235,12 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
 
       {resolved.length >= 2 && (
         <>
-          <h2 className="section-title">Desglose por experto</h2>
+          <div className="section-head">
+            <div>
+              <h2>Desglose por experto</h2>
+              <p>Qué fuente está funcionando mejor para ti.</p>
+            </div>
+          </div>
           <div className="table-wrap">
             <table className="odds-table">
               <thead>
@@ -192,8 +262,13 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
                     <tr key={expert}>
                       <td>{expert}</td>
                       <td>{s.w}-{s.l}</td>
-                      <td className={s.net >= 0 ? "best" : ""}>{s.net >= 0 ? "+" : ""}{s.net.toFixed(2)}u</td>
-                      <td>{s.stake > 0 ? `${((s.net / s.stake) * 100).toFixed(1)}%` : "–"}</td>
+                      <td className={s.net >= 0 ? "best" : ""}>
+                        {s.net >= 0 ? "+" : ""}
+                        {s.net.toFixed(2)}u
+                      </td>
+                      <td>
+                        {s.stake > 0 ? `${((s.net / s.stake) * 100).toFixed(1)}%` : "–"}
+                      </td>
                     </tr>
                   ))}
               </tbody>
@@ -203,7 +278,14 @@ export default function PerformancePanel({ bets, setBets, activeKey, onCredits }
       )}
 
       {open.length === 0 && resolved.length === 0 && (
-        <p className="muted">Sigue picks en la pestaña anterior y aparecerán aquí con su cuota capturada.</p>
+        <div className="empty-state">
+          <div className="empty-icon">📊</div>
+          <h3>Tu historial empieza aquí</h3>
+          <p>
+            Sigue picks en la pestaña anterior y aparecerán aquí con su cuota
+            capturada.
+          </p>
+        </div>
       )}
     </section>
   );

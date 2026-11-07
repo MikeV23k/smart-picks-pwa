@@ -61,7 +61,97 @@ const DEMO_EVENTS = [
       ]},
     ],
   },
+  {
+    id: "demo-evt-4",
+    sport_key: "tennis_atp",
+    commence_time: new Date(Date.now() + 36e5 * 26).toISOString(),
+    home_team: "Jannik Sinner",
+    away_team: "Carlos Alcaraz",
+    bookmakers: [
+      { title: "Pinnacle", markets: [
+        { key: "h2h", outcomes: [{ name: "Carlos Alcaraz", price: 2.1 }, { name: "Jannik Sinner", price: 1.75 }] },
+      ]},
+      { title: "Bet365", markets: [
+        { key: "h2h", outcomes: [{ name: "Carlos Alcaraz", price: 2.02 }, { name: "Jannik Sinner", price: 1.82 }] },
+      ]},
+    ],
+  },
+  {
+    id: "demo-evt-5",
+    sport_key: "tennis_wta",
+    commence_time: new Date(Date.now() + 36e5 * 32).toISOString(),
+    home_team: "Iga Swiatek",
+    away_team: "Aryna Sabalenka",
+    bookmakers: [
+      { title: "Pinnacle", markets: [
+        { key: "h2h", outcomes: [{ name: "Aryna Sabalenka", price: 1.95 }, { name: "Iga Swiatek", price: 1.87 }] },
+      ]},
+      { title: "Betfair", markets: [
+        { key: "h2h", outcomes: [{ name: "Aryna Sabalenka", price: 2.0 }, { name: "Iga Swiatek", price: 1.9 }] },
+      ]},
+    ],
+  },
+  {
+    id: "demo-evt-6",
+    sport_key: "mma_mixed_martial_arts",
+    commence_time: new Date(Date.now() + 36e5 * 60).toISOString(),
+    home_team: "Charles Oliveira",
+    away_team: "Ilia Topuria",
+    bookmakers: [
+      { title: "DraftKings", markets: [
+        { key: "h2h", outcomes: [{ name: "Ilia Topuria", price: 1.65 }, { name: "Charles Oliveira", price: 2.35 }] },
+      ]},
+      { title: "FanDuel", markets: [
+        { key: "h2h", outcomes: [{ name: "Ilia Topuria", price: 1.62 }, { name: "Charles Oliveira", price: 2.4 }] },
+      ]},
+    ],
+  },
+  {
+    id: "demo-evt-7",
+    sport_key: "cricket",
+    commence_time: new Date(Date.now() + 36e5 * 44).toISOString(),
+    home_team: "Australia",
+    away_team: "India",
+    bookmakers: [
+      { title: "Bet365", markets: [
+        { key: "h2h", outcomes: [{ name: "India", price: 1.9 }, { name: "Australia", price: 2.05 }, { name: "Draw", price: 9.0 }] },
+      ]},
+      { title: "Pinnacle", markets: [
+        { key: "h2h", outcomes: [{ name: "India", price: 1.88 }, { name: "Australia", price: 2.1 }, { name: "Draw", price: 8.5 }] },
+      ]},
+    ],
+  },
+  {
+    id: "demo-evt-8",
+    sport_key: "soccer_italy_serie_a",
+    commence_time: new Date(Date.now() + 36e5 * 54).toISOString(),
+    home_team: "Juventus",
+    away_team: "Inter",
+    bookmakers: [
+      { title: "Bet365", markets: [
+        { key: "h2h", outcomes: [{ name: "Inter", price: 2.15 }, { name: "Draw", price: 3.3 }, { name: "Juventus", price: 3.4 }] },
+      ]},
+      { title: "Pinnacle", markets: [
+        { key: "h2h", outcomes: [{ name: "Inter", price: 2.1 }, { name: "Draw", price: 3.35 }, { name: "Juventus", price: 3.5 }] },
+      ]},
+    ],
+  },
 ];
+
+function SkeletonStack() {
+  return (
+    <div className="skeleton-stack" aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <div className="skeleton-card" key={i}>
+          <div className="sk sk-sm" />
+          <div className="sk sk-lg" />
+          <div className="sk sk-line" />
+          <div className="sk sk-line short" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function App() {
   const [keys, setKeys] = useLocalStorage("apiKeys", []);
@@ -73,6 +163,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useLocalStorage("theme", "dark");
+  // Evita duplicar la petición en el doble efecto de React StrictMode (dev),
+  // que gastaría créditos de la API dos veces al montar.
+  const lastLoad = useRef({ key: "", at: 0 });
+  // Descarta respuestas viejas si el usuario cambia de deporte mientras carga.
+  const requestSeq = useRef(0);
 
   // Migración: claves del formato antiguo (una sola) → lista
   useEffect(() => {
@@ -90,6 +186,13 @@ export default function App() {
     // solo al montar
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Tema claro / oscuro persistido
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", theme === "light" ? "#f4f6fa" : "#070b12");
+  }, [theme]);
 
   const activeMeta = keys.find((k) => k.key === activeKey);
   const remaining = activeMeta?.remaining ?? null;
@@ -143,7 +246,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arbOpportunities.map((o) => o.event.id).join(",")]);
 
-  const load = async () => {
+  const load = async (force = false) => {
+    const requestKey = `${activeKey}:${sport}`;
+    const now = Date.now();
+    if (!force && lastLoad.current.key === requestKey && now - lastLoad.current.at < 1500) {
+      return;
+    }
+    lastLoad.current = { key: requestKey, at: now };
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -171,16 +281,21 @@ export default function App() {
         }
       } else {
         await new Promise((r) => setTimeout(r, 300));
+        if (seq !== requestSeq.current) return;
         loaded = DEMO_EVENTS.filter((e) => e.sport_key === sport);
       }
+      if (seq !== requestSeq.current) return;
       setEvents(loaded);
       // los picks usan los eventos ya cargados (consenso) + ESPN FPI
-      setPicks(await buildPicks(loaded, sport));
+      const nextPicks = await buildPicks(loaded, sport);
+      if (seq !== requestSeq.current) return;
+      setPicks(nextPicks);
     } catch (e) {
+      if (seq !== requestSeq.current) return;
       setError(e.message);
       setEvents([]);
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
 
@@ -191,44 +306,127 @@ export default function App() {
   }, [sport, activeKey]);
 
   const visibleEvents = (events ?? []).filter((e) => e.sport_key === sport);
+  const bookCount = new Set(
+    visibleEvents.flatMap((e) => (e.bookmakers ?? []).map((b) => b.title))
+  ).size;
+  const openBets = bets.filter((b) => b.status === "open").length;
+  const activeSport = SPORTS.find((s) => s.key === sport);
 
   return (
     <div className="app">
       <header className="app-header">
         <div className="brand">
-          <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-            <rect width="28" height="28" rx="6" fill="#10b981" />
-            <path d="M6 18l5-6 4 4 7-9" stroke="#0b1220" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <h1>Smart Picks</h1>
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
+              <path
+                d="M4 16l5-6 4 4 7-9"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <span className="brand-text">
+            <strong>Smart Picks</strong>
+            <small>Cuotas &amp; picks</small>
+          </span>
         </div>
-        <nav className="tabs">
-          <button className={tab === "cuotas" ? "tab active" : "tab"} onClick={() => setTab("cuotas")}>
+
+        <nav className="tabs" aria-label="Secciones">
+          <button
+            className={tab === "cuotas" ? "tab active" : "tab"}
+            onClick={() => setTab("cuotas")}
+          >
             Cuotas
           </button>
-          <button className={tab === "picks" ? "tab active" : "tab"} onClick={() => setTab("picks")}>
-            Picks expertos
+          <button
+            className={tab === "picks" ? "tab active" : "tab"}
+            onClick={() => setTab("picks")}
+          >
+            Picks
           </button>
-          <button className={tab === "rendimiento" ? "tab active" : "tab"} onClick={() => setTab("rendimiento")}>
-            Rendimiento{bets.some((b) => b.status === "open") ? ` (${bets.filter((b) => b.status === "open").length})` : ""}
+          <button
+            className={tab === "rendimiento" ? "tab active" : "tab"}
+            onClick={() => setTab("rendimiento")}
+          >
+            Rendimiento
+            {openBets > 0 && <span className="tab-count">{openBets}</span>}
           </button>
         </nav>
+
         <div className="header-actions">
-          {remaining != null && <span className="credits" title="Créditos restantes de tu API">🎟️ {remaining}</span>}
-          <button className="btn ghost" onClick={load} disabled={loading}>
-            {loading ? "…" : "↻"}
+          {remaining != null && (
+            <span className="credits" title="Créditos restantes de tu API">
+              🎟️ {remaining}
+            </span>
+          )}
+          <button
+            className="icon-btn"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label={theme === "dark" ? "Activar tema claro" : "Activar tema oscuro"}
+            title={theme === "dark" ? "Tema claro" : "Tema oscuro"}
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
           </button>
-          <button className="btn ghost" onClick={() => setShowSettings(true)} title="Configuración">⚙️</button>
+          <button
+            className={loading ? "icon-btn spinning" : "icon-btn"}
+            onClick={() => load(true)}
+            disabled={loading}
+            aria-label="Actualizar cuotas"
+            title="Actualizar"
+          >
+            ↻
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => setShowSettings(true)}
+            aria-label="Configuración"
+            title="Configuración"
+          >
+            ⚙️
+          </button>
         </div>
       </header>
 
+      {tab === "cuotas" && (
+        <section className="hero">
+          <div className="hero-copy">
+            <span className="eyebrow">
+              {activeKey ? "Datos en vivo" : "Modo demostración"}
+            </span>
+            <h2>Compara. Detecta. Decide.</h2>
+            <p>
+              Cuotas de las principales casas, consenso de mercado y arbitraje en
+              una sola vista. {activeSport ? `Ahora: ${activeSport.label}.` : ""}
+            </p>
+          </div>
+          <div className="hero-stats">
+            <div className="hero-stat">
+              <strong>{visibleEvents.length}</strong>
+              <span>eventos</span>
+            </div>
+            <div className="hero-stat">
+              <strong>{bookCount}</strong>
+              <span>casas</span>
+            </div>
+            <div className="hero-stat">
+              <strong>{arbOpportunities.length}</strong>
+              <span>arbitrajes</span>
+            </div>
+          </div>
+        </section>
+      )}
+
       {(remaining === 0 || (error ?? "").includes("Créditos agotados")) && (
-        <div className="notice warn">
-          ⚠️ Esta API key no tiene créditos. Créate otra gratis en the-odds-api.com y añádela en ⚙️,
-          o activa otra key guardada.
-          <button className="btn small" onClick={() => setShowSettings(true)}>Abrir ajustes</button>
+        <div className="notice warn" role="alert">
+          <span>⚠️ Esta API key no tiene créditos. Crea otra gratis en the-odds-api.com.</span>
+          <button className="btn small" onClick={() => setShowSettings(true)}>
+            Abrir ajustes
+          </button>
         </div>
       )}
+
       {arbOpportunities.length > 0 && (
         <div className="notice arb">
           ⚡ {arbOpportunities.length} oportunidad(es) de arbitraje ≥ {arbPct}% —{" "}
@@ -238,7 +436,7 @@ export default function App() {
       )}
 
       {!activeKey && (
-        <div className="notice">
+        <div className="notice info">
           Modo demostración — añade tu API key gratuita en ⚙️ para ver cuotas reales de las casas.
         </div>
       )}
@@ -246,18 +444,39 @@ export default function App() {
       <SportSelector sports={SPORTS} active={sport} onChange={setSport} />
 
       <main>
-        {error && <div className="error">{error}</div>}
+        {error && (
+          <div className="error" role="alert">
+            <strong>No se pudieron cargar las cuotas.</strong>
+            <span>{error}</span>
+            <button className="btn small ghost" onClick={() => load(true)}>
+              Reintentar
+            </button>
+          </div>
+        )}
+
         {tab === "cuotas" && (
           <section>
-            {loading && <p className="muted">Cargando cuotas…</p>}
+            {loading && <SkeletonStack />}
+
             {!loading && visibleEvents.length === 0 && !error && (
-              <p className="muted">No hay eventos próximos con líneas disponibles para este deporte.</p>
+              <div className="empty-state">
+                <div className="empty-icon">📉</div>
+                <h3>No hay eventos próximos</h3>
+                <p>
+                  No encontramos líneas para este deporte. Prueba otro o actualiza
+                  en unos minutos.
+                </p>
+                <button className="btn ghost" onClick={() => load(true)}>
+                  Actualizar
+                </button>
+              </div>
             )}
-            {visibleEvents.map((e) => (
-              <EventCard key={e.id} event={e} />
-            ))}
+
+            {!loading &&
+              visibleEvents.map((e) => <EventCard key={e.id} event={e} />)}
           </section>
         )}
+
         {tab === "picks" && (
           <PicksPanel
             picks={picks}
@@ -267,6 +486,7 @@ export default function App() {
             setBets={setBets}
           />
         )}
+
         {tab === "rendimiento" && (
           <PerformancePanel
             bets={bets}
@@ -313,9 +533,13 @@ export default function App() {
       )}
 
       <footer className="app-footer">
+        <div className="footer-brand">
+          <strong>Smart Picks</strong>
+          <span>Cuotas y picks, sin ruido.</span>
+        </div>
         <p className="muted small">
-          Las cuotas son informativas y pueden variar; confirma siempre en la casa antes de apostar.
-          Juega con responsabilidad. +18
+          Las cuotas son informativas y pueden variar; confirma siempre en la casa
+          antes de apostar. Juega con responsabilidad. +18
         </p>
       </footer>
     </div>

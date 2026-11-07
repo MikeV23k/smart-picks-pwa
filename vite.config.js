@@ -12,12 +12,12 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "Smart Picks — Comparador de líneas y picks",
+        name: "Smart Picks — Cuotas, picks y arbitraje",
         short_name: "Smart Picks",
         description:
-          "Compara cuotas de las principales casas de apuestas y los picks de expertos destacados en un solo lugar.",
-        theme_color: "#0b1220",
-        background_color: "#0b1220",
+          "Compara cuotas de las principales casas, sigue picks de expertos y detecta arbitraje en fútbol, NBA, NFL, tenis, UFC y más.",
+        theme_color: "#070b12",
+        background_color: "#070b12",
         display: "standalone",
         // Rutas relativas: funcionan igual en "/" (local) que en
         // "/smart-picks-pwa/" (GitHub Pages de proyecto).

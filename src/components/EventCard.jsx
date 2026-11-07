@@ -1,4 +1,4 @@
-import { buildLineMatrix, bestPrice, arbitrageMargin } from "../api/odds.js";
+import { SPORTS, buildLineMatrix, bestPrice, arbitrageMargin } from "../api/odds.js";
 
 function fmtKickoff(iso) {
   return new Date(iso).toLocaleString("es-ES", {
@@ -10,6 +10,10 @@ function fmtKickoff(iso) {
   });
 }
 
+function sportLabel(key) {
+  return SPORTS.find((s) => s.key === key)?.label ?? "Evento";
+}
+
 /**
  * Tabla de un mercado: una fila por selección, columnas por casa,
  * resaltando la mejor cuota.
@@ -17,7 +21,7 @@ function fmtKickoff(iso) {
 function MarketTable({ entriesBySelection }) {
   const rows = Object.entries(entriesBySelection ?? {});
   if (rows.length === 0) {
-    return <p className="muted">Sin líneas disponibles en este mercado.</p>;
+    return <p className="muted small">Sin líneas disponibles en este mercado.</p>;
   }
   const books = [...new Set(rows.flatMap(([, es]) => es.map((e) => e.book)))];
   return (
@@ -40,9 +44,14 @@ function MarketTable({ entriesBySelection }) {
                 {books.map((b) => {
                   const e = entries.find((x) => x.book === b);
                   if (!e) return <td key={b} className="muted">—</td>;
+                  const isBest = best && e.price === best.price;
                   return (
-                    <td key={b} className={best && e.price === best.price ? "best" : ""}>
-                      {e.price.toFixed(2)}
+                    <td key={b} className={isBest ? "best" : ""}>
+                      {isBest ? (
+                        <span className="best-odd">{e.price.toFixed(2)}</span>
+                      ) : (
+                        e.price.toFixed(2)
+                      )}
                     </td>
                   );
                 })}
@@ -59,30 +68,63 @@ export default function EventCard({ event }) {
   const matrix = buildLineMatrix(event);
   const arb = arbitrageMargin(matrix);
   const bookmakers = (event.bookmakers ?? []).map((b) => b.title);
+  const hasSpreads = Object.keys(matrix.spreads).length > 0;
+  const hasTotals = Object.keys(matrix.totals).length > 0;
 
   return (
     <article className="event-card">
       <header className="event-head">
-        <h3>
-          {event.away_team} <span className="muted">en</span> {event.home_team}
-        </h3>
+        <div className="event-league">
+          <span className="league-dot" aria-hidden="true" />
+          {sportLabel(event.sport_key)}
+        </div>
         <div className="event-meta">
-          <span>{fmtKickoff(event.commence_time)}</span>
-          <span>{bookmakers.length} casas</span>
-          {arb > 0 && <span className="arb-badge">⚡ Arbitraje {(arb * 100).toFixed(1)}%</span>}
+          <span className="meta-pill">🕒 {fmtKickoff(event.commence_time)}</span>
+          <span className="meta-pill">🏦 {bookmakers.length} casas</span>
+          {arb > 0 && (
+            <span className="arb-badge">⚡ Arbitraje {(arb * 100).toFixed(1)}%</span>
+          )}
         </div>
       </header>
 
-      <h4>Moneyline (1X2 / ML)</h4>
-      <MarketTable entriesBySelection={matrix.h2h} />
+      <div className="event-teams">
+        <div className="team">
+          <span className="team-role">Visitante</span>
+          <strong>{event.away_team}</strong>
+        </div>
+        <span className="vs" aria-hidden="true">@</span>
+        <div className="team">
+          <span className="team-role">Local</span>
+          <strong>{event.home_team}</strong>
+        </div>
+      </div>
 
-      <details>
-        <summary>Spreads y totales</summary>
-        <h4>Spreads</h4>
-        <MarketTable entriesBySelection={matrix.spreads} />
-        <h4>Totales</h4>
-        <MarketTable entriesBySelection={matrix.totals} />
-      </details>
+      <div className="market">
+        <h4>
+          Moneyline <span>1X2 / ML</span>
+        </h4>
+        <MarketTable entriesBySelection={matrix.h2h} />
+      </div>
+
+      {(hasSpreads || hasTotals) && (
+        <details className="more-markets">
+          <summary>Ver spreads y totales</summary>
+          <div className="more-markets-body">
+            {hasSpreads && (
+              <>
+                <h4>Spreads</h4>
+                <MarketTable entriesBySelection={matrix.spreads} />
+              </>
+            )}
+            {hasTotals && (
+              <>
+                <h4>Totales</h4>
+                <MarketTable entriesBySelection={matrix.totals} />
+              </>
+            )}
+          </div>
+        </details>
+      )}
     </article>
   );
 }

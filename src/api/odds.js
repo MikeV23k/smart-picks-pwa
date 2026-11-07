@@ -1,38 +1,101 @@
 /**
  * Adaptador de The Odds API (https://the-odds-api.com).
- * Tier gratuito: 500 créditos/mes. Cada llamada a /odds cuesta ~1 evento × mercados.
+ * Tier gratuito: 500 créditos/mes. Cada llamada a /odds cuesta según
+ * mercados × regiones, así que tenis, MMA y cricket piden solo h2h.
  */
 
 const BASE = "https://api.the-odds-api.com/v4";
 
 export const SPORTS = [
-  { key: "americanfootball_nfl", label: "NFL 🏈", group: "Fútbol Americano" },
-  { key: "basketball_nba", label: "NBA 🏀", group: "Baloncesto" },
-  { key: "baseball_mlb", label: "MLB ⚾", group: "Béisbol" },
-  { key: "icehockey_nhl", label: "NHL 🏒", group: "Hockey" },
-  { key: "soccer_epl", label: "Premier League ⚽", group: "Fútbol" },
-  { key: "soccer_spain_la_liga", label: "La Liga ⚽", group: "Fútbol" },
-  { key: "soccer_uefa_champs_league", label: "Champions League ⚽", group: "Fútbol" },
+  { key: "americanfootball_nfl", label: "NFL", short: "NFL", icon: "🏈", group: "Fútbol Americano" },
+  { key: "basketball_nba", label: "NBA", short: "NBA", icon: "🏀", group: "Baloncesto" },
+  { key: "baseball_mlb", label: "MLB", short: "MLB", icon: "⚾", group: "Béisbol" },
+  { key: "icehockey_nhl", label: "NHL", short: "NHL", icon: "🏒", group: "Hockey" },
+  { key: "soccer_epl", label: "Premier League", short: "Premier", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_spain_la_liga", label: "La Liga", short: "La Liga", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_uefa_champs_league", label: "Champions League", short: "Champions", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_italy_serie_a", label: "Serie A", short: "Serie A", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_germany_bundesliga", label: "Bundesliga", short: "Bundesliga", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_france_ligue_one", label: "Ligue 1", short: "Ligue 1", icon: "⚽", group: "Fútbol" },
+  { key: "soccer_usa_mls", label: "MLS", short: "MLS", icon: "⚽", group: "Fútbol" },
+  { key: "tennis_atp", label: "Tenis ATP", short: "ATP", icon: "🎾", group: "Tenis" },
+  { key: "tennis_wta", label: "Tenis WTA", short: "WTA", icon: "🎾", group: "Tenis" },
+  { key: "mma_mixed_martial_arts", label: "UFC / MMA", short: "UFC", icon: "🥊", group: "Combate" },
+  { key: "cricket", label: "Cricket", short: "Cricket", icon: "🏏", group: "Cricket" },
 ];
+
+/**
+ * Deportes cuyo torneo activo se resuelve con /sports, porque The Odds API
+ * los publica con una key por torneo (tennis_atp_wimbledon, cricket_ipl…).
+ */
+export const VIRTUAL_SPORTS = {
+  tennis_atp: { prefix: "tennis_atp_", label: "Tenis ATP" },
+  tennis_wta: { prefix: "tennis_wta_", label: "Tenis WTA" },
+  cricket: { prefix: "cricket_", label: "Cricket" },
+};
+
+/** Sin spreads/totales: ahorra créditos y evita tablas vacías. */
+const LIGHT_MARKETS = new Set([
+  "tennis_atp",
+  "tennis_wta",
+  "cricket",
+  "mma_mixed_martial_arts",
+]);
 
 export const REGIONS = "us,uk,eu";
 export const MARKETS = "h2h,spreads,totals";
 
-/** Lista de deportes disponibles según la API. */
+let sportsCache = { apiKey: "", at: 0, data: null };
+
+/** Lista de deportes disponibles según la API (gratis, cacheada 10 min). */
 export async function fetchSports(apiKey) {
+  if (
+    sportsCache.data &&
+    sportsCache.apiKey === apiKey &&
+    Date.now() - sportsCache.at < 10 * 60 * 1000
+  ) {
+    return sportsCache.data;
+  }
   const res = await fetch(`${BASE}/sports/?apiKey=${encodeURIComponent(apiKey)}`);
   if (!res.ok) throw new Error(`Error ${res.status}: ${await res.text()}`);
-  return res.json();
+  const data = await res.json();
+  sportsCache = { apiKey, at: Date.now(), data };
+  return data;
+}
+
+/**
+ * Traduce un deporte "virtual" (Tenis ATP/WTA, Cricket) al torneo activo.
+ * Si no hay torneo en curso, lanza un 404 con un mensaje legible.
+ */
+export async function resolveSportKey(apiKey, sportKey) {
+  const virtual = VIRTUAL_SPORTS[sportKey];
+  if (!virtual) return sportKey;
+  const sports = await fetchSports(apiKey);
+  const active = (sports ?? []).filter(
+    (s) => s.active && String(s.key).startsWith(virtual.prefix)
+  );
+  if (active.length === 0) {
+    const err = new Error(
+      `No hay torneos de ${virtual.label} activos ahora mismo. Prueba otro deporte.`
+    );
+    err.status = 404;
+    throw err;
+  }
+  return active[0].key;
 }
 
 /**
  * Cuotas de un deporte.
- * Devuelve { events, remaining } donde events es la respuesta estándar de la API.
+ * Devuelve { events, remaining, used, resolvedKey, markets }.
+ * En deportes virtuales cada evento conserva el torneo real en source_sport_key.
  */
 export async function fetchOdds(apiKey, sportKey) {
+  const resolvedKey = await resolveSportKey(apiKey, sportKey);
+  const isVirtual = resolvedKey !== sportKey;
+  const markets = LIGHT_MARKETS.has(sportKey) ? "h2h" : MARKETS;
   const url =
-    `${BASE}/sports/${sportKey}/odds/?apiKey=${encodeURIComponent(apiKey)}` +
-    `&regions=${REGIONS}&markets=${MARKETS}&oddsFormat=decimal`;
+    `${BASE}/sports/${resolvedKey}/odds/?apiKey=${encodeURIComponent(apiKey)}` +
+    `&regions=${REGIONS}&markets=${markets}&oddsFormat=decimal`;
   const res = await fetch(url);
   if (!res.ok) {
     const body = await res.text();
@@ -40,10 +103,17 @@ export async function fetchOdds(apiKey, sportKey) {
     err.status = res.status;
     throw err;
   }
-  const events = await res.json();
+  const data = await res.json();
+  const events = isVirtual
+    ? (Array.isArray(data) ? data : []).map((e) => ({
+        ...e,
+        sport_key: sportKey,
+        source_sport_key: resolvedKey,
+      }))
+    : data;
   const remaining = res.headers.get("x-requests-remaining");
   const used = res.headers.get("x-requests-used");
-  return { events, remaining, used };
+  return { events, remaining, used, resolvedKey, markets };
 }
 
 /* ---------- Helpers de análisis ---------- */
